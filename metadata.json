@@ -1,0 +1,6 @@
+{
+  "name": "ChatPulse",
+  "description": "Real-time messaging app to connect and chat with friends online",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

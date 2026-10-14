@@ -1,0 +1,212 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with display information, status, and friend code",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique user ID matching Firebase Auth UID"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User's public display name"
+        },
+        "email": {
+          "type": "string",
+          "description": "User's email address"
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional profile picture URL"
+        },
+        "statusMessage": {
+          "type": "string",
+          "description": "Custom status message or bio"
+        },
+        "friendCode": {
+          "type": "string",
+          "description": "6-character unique friend invite code"
+        },
+        "isOnline": {
+          "type": "boolean",
+          "description": "Current online presence status"
+        },
+        "lastSeen": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of last activity"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when profile was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when profile was last updated"
+        }
+      },
+      "required": ["userId", "displayName", "email", "friendCode", "createdAt", "updatedAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "A 1-on-1 or group chat conversation between users",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique conversation ID"
+        },
+        "memberIds": {
+          "type": "array",
+          "description": "List of user IDs participating in the conversation"
+        },
+        "memberNames": {
+          "type": "object",
+          "description": "Map of user ID to display name"
+        },
+        "lastMessage": {
+          "type": "string",
+          "description": "Snippet of the most recent message"
+        },
+        "lastMessageSenderId": {
+          "type": "string",
+          "description": "User ID who sent the last message"
+        },
+        "lastMessageTimestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the last message"
+        },
+        "isGroup": {
+          "type": "boolean",
+          "description": "Whether this is a group conversation"
+        },
+        "groupTitle": {
+          "type": "string",
+          "description": "Optional title for group conversation"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when conversation was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when conversation was updated"
+        }
+      },
+      "required": ["memberIds", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Individual message sent within a conversation",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique message ID"
+        },
+        "conversationId": {
+          "type": "string",
+          "description": "Parent conversation ID"
+        },
+        "senderId": {
+          "type": "string",
+          "description": "User ID of sender"
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display name of sender"
+        },
+        "text": {
+          "type": "string",
+          "description": "Text message content"
+        },
+        "memberIds": {
+          "type": "array",
+          "description": "Denormalized conversation member user IDs for flat subcollection auth evaluation"
+        },
+        "reactions": {
+          "type": "string",
+          "description": "Emoji reactions string or representation"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when message was sent"
+        }
+      },
+      "required": ["conversationId", "senderId", "senderName", "text", "memberIds", "createdAt"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Friend request sent from one user to another",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique friend request ID"
+        },
+        "senderId": {
+          "type": "string",
+          "description": "User ID of the sender"
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display name of the sender"
+        },
+        "senderEmail": {
+          "type": "string",
+          "description": "Email of the sender"
+        },
+        "receiverId": {
+          "type": "string",
+          "description": "User ID of the receiver"
+        },
+        "receiverEmail": {
+          "type": "string",
+          "description": "Email or friend code of the receiver"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "accepted", "rejected"],
+          "description": "Status of the friend request"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when request was sent"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when request was updated"
+        }
+      },
+      "required": ["senderId", "senderName", "senderEmail", "receiverId", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Chat conversations"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Chat messages within a conversation"
+    },
+    "/friend_requests/{requestId}": {
+      "schema": "FriendRequest",
+      "description": "Friend requests"
+    }
+  }
+}

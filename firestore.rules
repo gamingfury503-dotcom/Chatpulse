@@ -1,0 +1,154 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 1000)) &&
+             (!('statusMessage' in data) || data.statusMessage == null || (data.statusMessage is string && data.statusMessage.size() <= 200)) &&
+             data.friendCode is string && data.friendCode.size() >= 4 && data.friendCode.size() <= 20 &&
+             (!('isOnline' in data) || data.isOnline is bool) &&
+             (!('lastSeen' in data) || data.lastSeen == null || (data.lastSeen is timestamp && data.lastSeen <= request.time));
+    }
+
+    function isValidConversation(data) {
+      return data.memberIds is list && data.memberIds.size() >= 1 && data.memberIds.size() <= 50 && data.memberIds[0] is string &&
+             (!('memberNames' in data) || data.memberNames is map) &&
+             (!('lastMessage' in data) || (data.lastMessage is string && data.lastMessage.size() <= 2000)) &&
+             (!('lastMessageSenderId' in data) || (data.lastMessageSenderId is string && data.lastMessageSenderId.size() <= 128)) &&
+             (!('lastMessageTimestamp' in data) || data.lastMessageTimestamp == null || (data.lastMessageTimestamp is timestamp && data.lastMessageTimestamp <= request.time)) &&
+             (!('isGroup' in data) || data.isGroup is bool) &&
+             (!('groupTitle' in data) || data.groupTitle == null || (data.groupTitle is string && data.groupTitle.size() <= 100));
+    }
+
+    function isValidChatMessage(data) {
+      return data.conversationId is string && data.conversationId.size() <= 128 &&
+             data.senderId is string && data.senderId == request.auth.uid &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 100 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 4000 &&
+             data.memberIds is list && data.memberIds.size() >= 1 && data.memberIds.size() <= 50 && (request.auth.uid in data.memberIds) &&
+             (!('reactions' in data) || data.reactions == null || (data.reactions is string && data.reactions.size() <= 200));
+    }
+
+    function isValidFriendRequest(data) {
+      return data.senderId is string && data.senderId == request.auth.uid &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 100 &&
+             data.senderEmail is string && data.senderEmail.size() >= 3 && data.senderEmail.size() <= 150 &&
+             data.receiverId is string && data.receiverId.size() > 0 && data.receiverId.size() <= 128 &&
+             data.receiverEmail is string && data.receiverEmail.size() >= 3 && data.receiverEmail.size() <= 150 &&
+             data.status in ['pending', 'accepted', 'rejected'];
+    }
+
+    // 1. Users collection
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'friendCode', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidUserProfile(incoming());
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoUrl', 'statusMessage', 'friendCode', 'isOnline', 'lastSeen', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // 2. Conversations collection
+    match /conversations/{conversationId} {
+      allow get: if isSignedIn() && (resource == null || (request.auth.uid in resource.data.memberIds));
+      allow list: if isSignedIn() && (request.auth.uid in resource.data.memberIds);
+      allow create: if isSignedIn() &&
+                       isValidId(conversationId) &&
+                       (request.auth.uid in incoming().memberIds) &&
+                       incoming().keys().hasAll(['memberIds', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidConversation(incoming());
+      allow update: if isSignedIn() &&
+                       (request.auth.uid in existing().memberIds) &&
+                       (request.auth.uid in incoming().memberIds) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidConversation(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'lastMessageSenderId', 'lastMessageTimestamp', 'memberIds', 'memberNames', 'groupTitle', 'updatedAt']);
+      allow delete: if false;
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && (resource == null || (('memberIds' in resource.data) && (request.auth.uid in resource.data.memberIds)));
+        allow list: if isSignedIn() && ('memberIds' in resource.data) && (request.auth.uid in resource.data.memberIds);
+        allow create: if isSignedIn() &&
+                         isValidId(messageId) &&
+                         incoming().senderId == request.auth.uid &&
+                         ('memberIds' in incoming()) &&
+                         (request.auth.uid in incoming().memberIds) &&
+                         incoming().keys().hasAll(['conversationId', 'senderId', 'senderName', 'text', 'memberIds', 'createdAt']) &&
+                         incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                         isValidChatMessage(incoming());
+        allow update: if isSignedIn() &&
+                         ('memberIds' in existing()) &&
+                         (request.auth.uid in existing().memberIds) &&
+                         ('memberIds' in incoming()) &&
+                         (request.auth.uid in incoming().memberIds) &&
+                         incoming().senderId == existing().senderId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidChatMessage(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['reactions']);
+        allow delete: if false;
+      }
+    }
+
+    // 3. Friend Requests collection
+    match /friend_requests/{requestId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      allow list: if isSignedIn() && (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       incoming().senderId == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       incoming().keys().hasAll(['senderId', 'senderName', 'senderEmail', 'receiverId', 'receiverEmail', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidFriendRequest(incoming());
+      allow update: if isSignedIn() &&
+                       (existing().receiverId == request.auth.uid || existing().senderId == request.auth.uid) &&
+                       incoming().senderId == existing().senderId &&
+                       incoming().receiverId == existing().receiverId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidFriendRequest(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isSignedIn() && (existing().senderId == request.auth.uid || existing().receiverId == request.auth.uid);
+    }
+  }
+}
